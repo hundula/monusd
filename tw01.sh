@@ -1,148 +1,85 @@
-#!/usr/bin/env bash
-set -o errexit
-set -o nounset
-set -o pipefail
+#!/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin:/sbin
+export PATH
 
-# Automatically update your CloudFlare DNS record to the IP, Dynamic DNS
-# Can retrieve cloudflare Domain id and list zone's, because, lazy
+function v2ray(){
+    echo "###   v2ray后端   ###"
+    echo "###     11      ###"
+    echo "###     11      ###"
 
-# Place at:
-# curl https://raw.githubusercontent.com/yulewang/cloudflare-api-v4-ddns/master/cf-v4-ddns.sh > /usr/local/bin/cf-ddns.sh && chmod +x /usr/local/bin/cf-ddns.sh
-# run `crontab -e` and add next line:
-# */1 * * * * /usr/local/bin/cf-ddns.sh >/dev/null 2>&1
-# or you need log:
-# */1 * * * * /usr/local/bin/cf-ddns.sh >> /var/log/cf-ddns.log 2>&1
+    echo " "
+    echo -e "\033[41;33m 本功能仅支持Debian 9，请勿在其他系统中运行 \033[0m"
+    echo " "
+    echo "---------------------------------------------------------------------------"
+    echo " "
 
 
-# Usage:
-# cf-ddns.sh -k cloudflare-api-key \
-#            -u user@example.com \
-#            -h host.example.com \     # fqdn of the record you want to update
-#            -z example.com \          # will show you all zones if forgot, but you need this
-#            -t A|AAAA                 # specify ipv4/ipv6, default: ipv4
+    read -n 1
+    echo "net.ipv6.conf.all.disable_ipv6 = 1" >> /etc/sysctl.conf
+    sysctl -p /etc/sysctl.conf
+    apt-get install sudo
+    sudo apt-get update
+    sudo apt-get install \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg-agent \
+    software-properties-common -y
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+    sudo add-apt-repository \
+    "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+    $(lsb_release -cs) \
+    stable"
+    sudo apt-get install docker-ce docker-ce-cli containerd.io -y
+    systemctl start docker
+    systemctl enable docker
+	  docker run --restart=always --name f1 -d \
+    -v /etc/soga/:/etc/soga/ --network host \
+    -e type=xiaov2board \
+    -e server_type=ss \
+    -e node_id=9 \
+    -e soga_key=69QBm4gue2atGRO2XsWT9aOR0yfYaJRr \
+    -e api=webapi \
+    -e webapi_url=https://www.345686.cc/ \
+    -e webapi_key=cFdYIpphU37DnxQXMgCa \
+    -e proxy_protocol=true \
+    -e tunnel_proxy_protocol=true \
+    -e udp_proxy_protocol=true \
+    -e redis_enable=true \
+    -e redis_addr=ip.dlbtizi.net:1357 \
+    -e redis_password=damai \
+    -e redis_db=1 \
+    -e conn_limit_expiry=60 \
+    -e user_conn_limit=4 \
+    vaxilu/soga:2.12.7
 
-# Optional flags:
-#            -f false|true \           # force dns update, disregard local stored ip
+    echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+    echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+    sysctl -p
+    echo " "
+    echo " "
+    echo -e "\033[42;37m 安装完成 \033[0m"
+}
 
-# default config
+function menu(){
+    echo "###         自用          ###"
+    echo "###            专用         ###"
+    echo "###    Update: 2024-05-14      ###"
+    echo ""
 
-# API key, see https://www.cloudflare.com/a/account/my-account,
-# incorrect api-key results in E_UNAUTH error
-CFKEY=ab0d638bb9645a0aa5f134ec9988734d741ab
+    echo "---------------------------------------------------------------------------"
 
-# Username, eg: user@example.com
-CFUSER=phungduyla@gmail.com
+    echo -e "\033[42;37m [1] \033[0m 安装v2ray后端"
+    echo -e "\033[41;33m 请输入选项以继续，ctrl+C退出 \033[0m"
 
-# Zone name, eg: example.com
-CFZONE_NAME=345686.cc
+    opt=0
+    read opt
+    if [ "$opt"x = "1"x ]; then
+        v2ray
 
-# Hostname to update, eg: homeserver.example.com
-CFRECORD_NAME=te01
+    else
+        v2ray
+    fi
+}
 
-# Record type, A(IPv4)|AAAA(IPv6), default IPv4
-CFRECORD_TYPE=A
-
-# Cloudflare TTL for record, between 120 and 86400 seconds
-CFTTL=120
-
-# Ignore local file, update ip anyway
-FORCE=false
-
-WANIPSITE="http://ipv4.icanhazip.com"
-
-# Site to retrieve WAN ip, other examples are: bot.whatismyipaddress.com, https://api.ipify.org/ ...
-if [ "$CFRECORD_TYPE" = "A" ]; then
-  :
-elif [ "$CFRECORD_TYPE" = "AAAA" ]; then
-  WANIPSITE="http://ipv6.icanhazip.com"
-else
-  echo "$CFRECORD_TYPE specified is invalid, CFRECORD_TYPE can only be A(for IPv4)|AAAA(for IPv6)"
-  exit 2
-fi
-
-# get parameter
-while getopts k:u:h:z:t:f: opts; do
-  case ${opts} in
-    k) CFKEY=${OPTARG} ;;
-    u) CFUSER=${OPTARG} ;;
-    h) CFRECORD_NAME=${OPTARG} ;;
-    z) CFZONE_NAME=${OPTARG} ;;
-    t) CFRECORD_TYPE=${OPTARG} ;;
-    f) FORCE=${OPTARG} ;;
-  esac
-done
-
-# If required settings are missing just exit
-if [ "$CFKEY" = "" ]; then
-  echo "Missing api-key, get at: https://www.cloudflare.com/a/account/my-account"
-  echo "and save in ${0} or using the -k flag"
-  exit 2
-fi
-if [ "$CFUSER" = "" ]; then
-  echo "Missing username, probably your email-address"
-  echo "and save in ${0} or using the -u flag"
-  exit 2
-fi
-if [ "$CFRECORD_NAME" = "" ]; then 
-  echo "Missing hostname, what host do you want to update?"
-  echo "save in ${0} or using the -h flag"
-  exit 2
-fi
-
-# If the hostname is not a FQDN
-if [ "$CFRECORD_NAME" != "$CFZONE_NAME" ] && ! [ -z "${CFRECORD_NAME##*$CFZONE_NAME}" ]; then
-  CFRECORD_NAME="$CFRECORD_NAME.$CFZONE_NAME"
-  echo " => Hostname is not a FQDN, assuming $CFRECORD_NAME"
-fi
-
-# Get current and old WAN ip
-WAN_IP=`curl -s ${WANIPSITE}`
-WAN_IP_FILE=$HOME/.cf-wan_ip_$CFRECORD_NAME.txt
-if [ -f $WAN_IP_FILE ]; then
-  OLD_WAN_IP=`cat $WAN_IP_FILE`
-else
-  echo "No file, need IP"
-  OLD_WAN_IP=""
-fi
-
-# If WAN IP is unchanged an not -f flag, exit here
-if [ "$WAN_IP" = "$OLD_WAN_IP" ] && [ "$FORCE" = false ]; then
-  echo "WAN IP Unchanged, to update anyway use flag -f true"
-  exit 0
-fi
-
-# Get zone_identifier & record_identifier
-ID_FILE=$HOME/.cf-id_$CFRECORD_NAME.txt
-if [ -f $ID_FILE ] && [ $(wc -l $ID_FILE | cut -d " " -f 1) == 4 ] \
-  && [ "$(sed -n '3,1p' "$ID_FILE")" == "$CFZONE_NAME" ] \
-  && [ "$(sed -n '4,1p' "$ID_FILE")" == "$CFRECORD_NAME" ]; then
-    CFZONE_ID=$(sed -n '1,1p' "$ID_FILE")
-    CFRECORD_ID=$(sed -n '2,1p' "$ID_FILE")
-else
-    echo "Updating zone_identifier & record_identifier"
-    CFZONE_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=$CFZONE_NAME" -H "X-Auth-Email: $CFUSER" -H "X-Auth-Key: $CFKEY" -H "Content-Type: application/json" | grep -Po '(?<="id":")[^"]*' | head -1 )
-    CFRECORD_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$CFZONE_ID/dns_records?name=$CFRECORD_NAME" -H "X-Auth-Email: $CFUSER" -H "X-Auth-Key: $CFKEY" -H "Content-Type: application/json"  | grep -Po '(?<="id":")[^"]*' | head -1 )
-    echo "$CFZONE_ID" > $ID_FILE
-    echo "$CFRECORD_ID" >> $ID_FILE
-    echo "$CFZONE_NAME" >> $ID_FILE
-    echo "$CFRECORD_NAME" >> $ID_FILE
-fi
-
-# If WAN is changed, update cloudflare
-echo "Updating DNS to $WAN_IP"
-
-RESPONSE=$(curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$CFZONE_ID/dns_records/$CFRECORD_ID" \
-  -H "X-Auth-Email: $CFUSER" \
-  -H "X-Auth-Key: $CFKEY" \
-  -H "Content-Type: application/json" \
-  --data "{\"id\":\"$CFZONE_ID\",\"type\":\"$CFRECORD_TYPE\",\"name\":\"$CFRECORD_NAME\",\"content\":\"$WAN_IP\", \"ttl\":$CFTTL}")
-
-if [ "$RESPONSE" != "${RESPONSE%success*}" ] && [ "$(echo $RESPONSE | grep "\"success\":true")" != "" ]; then
-  echo "Updated succesfuly!"
-  echo $WAN_IP > $WAN_IP_FILE
-  exit
-else
-  echo 'Something went wrong :('
-  echo "Response: $RESPONSE"
-  exit 1
-fi
+menu
