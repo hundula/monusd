@@ -37,7 +37,7 @@ function v2ray(){
     -v /etc/soga/:/etc/soga/ --network host \
     -e type=xiaov2board \
     -e server_type=ss \
-    -e node_id=1 \
+    -e node_id=3 \
     -e soga_key=69QBm4gue2atGRO2XsWT9aOR0yfYaJRr \
     -e api=webapi \
     -e webapi_url=https://www.345686.cc/ \
